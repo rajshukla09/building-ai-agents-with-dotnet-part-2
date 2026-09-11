@@ -1,0 +1,28 @@
+<section class="panel" aria-labelledby="flow-heading">
+    <h2 id="flow-heading">Workflow flow</h2>
+    <div class="flow" aria-label="Release review workflow execution path">
+        <Node Name="ValidateRelease" Status="@Status("ValidateRelease")" />
+        <span class="arrow">↓</span>
+        <div class="decision-node">High Risk? <strong>@(Result.HighRisk ? "Yes" : "No")</strong></div>
+        <div class="route-grid">
+            <div><span>Yes</span><Node Name="ExtraReview" Status="@Status("ExtraReview")" /></div>
+            <div><span>No</span><Node Name="Continue" Status="@(Result.HighRisk ? "Skipped" : "Completed")" /></div>
+        </div>
+        <span class="arrow">↓ Fan-Out</span>
+        <div class="branch-grid">
+            <Node Name="Security" Status="@Status("SecurityReview")" />
+            <Node Name="Quality" Status="@Status("QualityReview")" />
+            <Node Name="Architecture" Status="@Status("ArchitectureReview")" />
+        </div>
+        <span class="arrow">↓ Fan-In</span>
+        <Node Name="ReleaseDecision" Status="@Status("ReleaseDecision")" />
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public required ReleaseReviewResponse Result { get; set; }
+
+    private string Status(string name) =>
+        Result.Executors.First(item => item.Name == name).Status;
+}

@@ -1,0 +1,75 @@
+@if (Bundle is null)
+{
+    <MudAlert Severity="Severity.Info">Context retrieval is still running.</MudAlert>
+}
+else
+{
+    <MudStack Spacing="2">
+        <MudText Typo="Typo.h6">Task</MudText>
+        <MudText>@Bundle.CurrentAgentTask</MudText>
+
+        <MudText Typo="Typo.h6">Incident context</MudText>
+        <MudText>@Bundle.IncidentSummary</MudText>
+
+        <MudText Typo="Typo.h6">Active hypotheses supplied</MudText>
+        @if (Bundle.RelevantHypotheses?.Count > 0)
+        {
+            @foreach (var hypothesis in Bundle.RelevantHypotheses)
+            {
+                <MudText Typo="Typo.body2">
+                    @hypothesis.Description — status score @hypothesis.Confidence.ToString("0.00")
+                </MudText>
+            }
+        }
+        else
+        {
+            <MudText Typo="Typo.body2">No active hypotheses were included.</MudText>
+        }
+
+        <MudPaper Class="budget-box pa-3" Elevation="0">
+            <MudText Typo="Typo.subtitle2">Context budget</MudText>
+            <MudText Typo="Typo.body2">
+                @Bundle.Budget?.SelectedItems / @Bundle.Budget?.MaximumItems items ·
+                @FormatSize(Bundle.Budget?.ApproximateCharacters ?? 0) / 
+                @FormatSize(Bundle.Budget?.MaximumCharacters ?? 0) approximate characters
+            </MudText>
+        </MudPaper>
+
+        <MudText Typo="Typo.h6">Selected evidence</MudText>
+        @foreach (var evidence in Bundle.Evidence)
+        {
+            <MudPaper Class="evidence-detail pa-3" Outlined="true">
+                <MudStack Row="true" Justify="Justify.SpaceBetween">
+                    <MudChip T="string" Size="Size.Small">@evidence.EvidenceType</MudChip>
+                    <MudText Typo="Typo.caption">Score @evidence.RankingScore.ToString("0.0")</MudText>
+                </MudStack>
+                <MudText Typo="Typo.subtitle2" Class="mt-2">@evidence.Summary</MudText>
+                <MudText Typo="Typo.body2">@evidence.DetailedContent</MudText>
+                <MudText Typo="Typo.caption">
+                    @evidence.EvidenceId · @evidence.SourceAgent · @evidence.Component
+                </MudText>
+                <MudText Typo="Typo.caption">@evidence.RetrievalReason</MudText>
+                <MudStack Row="true" Spacing="1" Class="mt-2">
+                    @foreach (var factor in evidence.RankingFactors ?? [])
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                            @factor.Name +@factor.Weight
+                        </MudChip>
+                    }
+                </MudStack>
+            </MudPaper>
+        }
+    </MudStack>
+}
+
+@code {
+    [Parameter]
+    public ContextBundle? Bundle { get; set; }
+
+    private static string FormatSize(int characters)
+    {
+        return characters >= 1_000
+            ? $"{characters / 1_000d:0.0}K"
+            : characters.ToString();
+    }
+}

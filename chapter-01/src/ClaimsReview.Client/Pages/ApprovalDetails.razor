@@ -1,0 +1,127 @@
+@page "/claim-approvals/{ApprovalRequestId:guid}"
+
+<h1>Approval Details</h1>
+
+@if (model is not null)
+{
+    <MudChip T="string" Color="@StatusColor(model.Status)" Variant="Variant.Filled">
+        @model.Status
+    </MudChip>
+
+    <h2>Claim Details</h2>
+    <MudList T="string">
+        <MudListItem>Policy: @model.Claim.PolicyNumber</MudListItem>
+        <MudListItem>Claimant: @model.Claim.ClaimantName</MudListItem>
+        <MudListItem>Type: @model.Claim.ClaimType</MudListItem>
+        <MudListItem>Amount: @model.Claim.ClaimedAmount.ToString("C")</MudListItem>
+        <MudListItem>Incident date: @model.Claim.IncidentDate</MudListItem>
+        <MudListItem>Incident: @model.Claim.IncidentSummary</MudListItem>
+        <MudListItem>Evidence: @string.Join(", ", model.Claim.SupportingEvidence)</MudListItem>
+    </MudList>
+
+    <h2>Risk Assessment</h2>
+    <p>
+        @model.RiskAssessment.RiskLevel @model.RiskAssessment.RiskScore
+        @model.RiskAssessment.Recommendation
+    </p>
+    <ul>
+        @foreach (var factor in model.RiskAssessment.RiskFactors)
+        {
+            <li>@factor</li>
+        }
+    </ul>
+
+    <h2>Approval Reason</h2>
+    <ul>
+        @foreach (var rule in model.TriggeredRules)
+        {
+            <li>@rule</li>
+        }
+    </ul>
+
+    @if (model.Status == "Pending")
+    {
+        <MudTextField Label="Reviewer" @bind-Value="reviewer" />
+        <MudTextField Label="Comment" @bind-Value="comment" />
+        <MudButton Color="Color.Success" Variant="Variant.Filled"
+                   Disabled="submitting" OnClick="Approve">
+            Approve
+        </MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled"
+                   Disabled="submitting" OnClick="Reject">
+            Reject
+        </MudButton>
+    }
+    else
+    {
+        <MudText>Reviewer: @(model.Reviewer ?? "Not recorded")</MudText>
+        <MudText>Comment: @(model.Comment ?? "None")</MudText>
+        <MudText>Decided at: @(model.DecidedAt?.ToString("u") ?? "Not recorded")</MudText>
+    }
+
+    @if (decisionStatus is not null)
+    {
+        <MudAlert Severity="Severity.Info">@decisionStatus</MudAlert>
+    }
+}
+
+@code {
+    [Parameter]
+    public Guid ApprovalRequestId { get; set; }
+
+    [Inject]
+    private HttpClient Http { get; set; } = default!;
+
+    private ClaimApprovalDetails? model;
+    private string reviewer = "Raj";
+    private string comment = "";
+    private bool submitting;
+    private string? decisionStatus;
+
+    protected override async Task OnInitializedAsync()
+    {
+        model = await Http.GetFromJsonAsync<ClaimApprovalDetails>(
+            $"api/claim-approvals/{ApprovalRequestId}");
+        reviewer = model?.Reviewer ?? reviewer;
+        comment = model?.Comment ?? comment;
+    }
+
+    private async Task Approve()
+    {
+        await SubmitDecision("approve");
+    }
+
+    private async Task Reject()
+    {
+        await SubmitDecision("reject");
+    }
+
+    private async Task SubmitDecision(string action)
+    {
+        submitting = true;
+        var response = await Http.PostAsJsonAsync(
+            $"api/claim-approvals/{ApprovalRequestId}/{action}",
+            new ApprovalDecisionRequest(reviewer, comment));
+
+        if (response.IsSuccessStatusCode)
+        {
+            var queued = await response.Content.ReadFromJsonAsync<QueueResumeResponse>();
+            decisionStatus = queued?.Status == "ResumeQueued" ? "Resume queued" : "Already decided";
+            model = await Http.GetFromJsonAsync<ClaimApprovalDetails>(
+                $"api/claim-approvals/{ApprovalRequestId}");
+        }
+        else
+        {
+            decisionStatus = $"The decision could not be submitted ({(int)response.StatusCode}).";
+        }
+
+        submitting = false;
+    }
+
+    private static Color StatusColor(string status) => status switch
+    {
+        "Approved" => Color.Success,
+        "Rejected" or "Expired" => Color.Error,
+        _ => Color.Secondary,
+    };
+}

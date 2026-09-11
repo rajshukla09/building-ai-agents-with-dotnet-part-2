@@ -1,0 +1,24 @@
+@{ var completed = Events.LastOrDefault(x => x.EventType is "AgentCompleted" or "AgentFailed"); var started = Events.FirstOrDefault(x => x.EventType == "AgentStarted"); var discovery = Events.FirstOrDefault(x => x.EventType == "McpCapabilitiesDiscovered"); var tools = Events.Where(x => x.EventType == "McpToolCompleted").ToArray(); }
+<MudPaper Class="pa-4 mb-4 agent-card" Elevation="2">
+    <div class="d-flex justify-space-between"><MudText Typo="Typo.h6">@Decision.Agent</MudText><MudChip T="string" Size="Size.Small" Color="@(completed?.Status == "Failed" ? Color.Error : completed is null ? Color.Info : Color.Success)">@(completed?.Status ?? "Running")</MudChip></div>
+    <MudText Typo="Typo.caption">Selected @Decision.Timestamp.ToLocalTime().ToString("T") · Started @(started?.Timestamp.ToLocalTime().ToString("T") ?? "—") · Completed @(completed?.Timestamp.ToLocalTime().ToString("T") ?? "—") · @(completed?.DurationMilliseconds?.ToString() ?? "—") ms</MudText>
+    <MudText Class="mt-2"><b>Why selected:</b> @Decision.Reason</MudText>
+    <MudText><b>Input context summary:</b> @(started?.InputContextSummary)</MudText>
+    <MudDivider Class="my-3"/>
+    @if (discovery is not null) {
+        <MudExpansionPanels Class="mb-3"><MudExpansionPanel Text="Available MCP capabilities">
+            <MudText><b>@ServerLabel(discovery.ToolServer)</b></MudText>
+            @foreach (var capability in (discovery.Reason ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)) { <MudText Typo="Typo.body2">• @capability</MudText> }
+        </MudExpansionPanel></MudExpansionPanels>
+    }
+    <MudText Typo="Typo.subtitle2">Execution hierarchy</MudText>
+    <div class="mcp-hierarchy"><b>@Decision.Agent</b><span>↓</span><b>MCP Client</b><span>↓</span><b>@ServerLabel(discovery?.ToolServer)</b></div>
+    <MudText Typo="Typo.subtitle2">Selected MCP tools: @tools.Length / @MaxTools</MudText>
+    @if (tools.Length == 0) { <MudText Typo="Typo.caption" Color="Color.Secondary">No MCP capability was invoked.</MudText> }
+    @foreach (var tool in tools) { <div class="tool-row"><MudIcon Icon="@(tool.Status == "Completed" ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)" Color="@(tool.Status == "Completed" ? Color.Success : Color.Error)" Size="Size.Small"/><span>↓ Selected: <b>@tool.Tool</b> · @Duration(tool.DurationMilliseconds) · @tool.Status</span></div>@if (!string.IsNullOrWhiteSpace(tool.ErrorSummary)) { <MudText Color="Color.Error">@tool.ErrorSummary</MudText> } }
+    <MudDivider Class="my-3"/><MudText><b>Finding produced:</b> @(completed?.FindingSummary ?? "Awaiting finding…")</MudText>
+    @if (completed?.Confidence is not null) { <MudText><b>Confidence:</b> @completed.Confidence.Value.ToString("P0")</MudText> }
+    @if (!string.IsNullOrWhiteSpace(completed?.SuggestedNextInvestigation)) { <MudText><b>Suggested next investigation:</b> @completed.SuggestedNextInvestigation</MudText> }
+    @if (!string.IsNullOrWhiteSpace(completed?.ErrorSummary)) { <MudAlert Severity="Severity.Error" Class="mt-2">Failure stage: agent execution · @completed.ErrorSummary</MudAlert> }
+</MudPaper>
+@code { [Parameter, EditorRequired] public InvestigationEventView Decision { get; set; } = null!; [Parameter, EditorRequired] public IReadOnlyList<InvestigationEventView> Events { get; set; } = []; [Parameter] public int MaxTools { get; set; } private static string ServerLabel(string? server) => server switch { "deployment" => "Deployment MCP Server", "logs" => "Logs MCP Server", "metrics" => "Metrics MCP Server", "database" => "Database MCP Server", _ => "No MCP server" }; private static string Duration(long? milliseconds) => milliseconds is 0 ? "<1 ms" : $"{milliseconds?.ToString() ?? "—"} ms"; }

@@ -1,0 +1,175 @@
+@page "/claim-workflows/{WorkflowRunId:guid}/live"
+@implements IAsyncDisposable
+
+<h1>Live Claim Workflow</h1>
+
+@if (workflow is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.h6">Workflow status</MudText>
+        <MudChip T="string" Color="@StatusColor(workflow.Status)" Variant="Variant.Filled">
+            @DisplayStatus(workflow.Status)
+        </MudChip>
+    </MudStack>
+    <MudText>Active stage: @ActiveStage(workflow.Status)</MudText>
+
+    @if (workflow.Status == "WaitingForApproval")
+    {
+        <MudCard Elevation="2" Class="pa-4 mt-3 mb-3">
+            <MudCardContent>
+                <MudText Typo="Typo.h6">Human Approval</MudText>
+                <MudText>This claim is waiting for a reviewer decision.</MudText>
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Color="Color.Success"
+                           Variant="Variant.Filled"
+                           Disabled="approvalSubmitting"
+                           OnClick='@(() => SubmitApproval("approve"))'>
+                    Approve
+                </MudButton>
+                <MudButton Color="Color.Error"
+                           Variant="Variant.Filled"
+                           Disabled="approvalSubmitting"
+                           OnClick='@(() => SubmitApproval("reject"))'>
+                    Reject
+                </MudButton>
+                @if (workflow.ApprovalRequestId is Guid approvalRequestId)
+                {
+                    <MudButton Href="@($"/claim-approvals/{approvalRequestId}")">
+                        View details
+                    </MudButton>
+                }
+            </MudCardActions>
+        </MudCard>
+    }
+
+    @if (workflow.Decision is not null)
+    {
+        <MudAlert Severity="Severity.Success">
+            Final decision: @workflow.Decision.Outcome — @workflow.Decision.Reason
+        </MudAlert>
+    }
+}
+
+<pre>
+ClaimIntakeAgentExecutor
+    → ClaimValidationExecutor
+    → RiskAssessmentAgentExecutor
+    → HumanApprovalRequestExecutor
+    → Native MAF Approval RequestPort
+    → ClaimDecisionExecutor
+</pre>
+
+<MudList T="string">
+    @foreach (var workflowEvent in events)
+    {
+        <MudListItem>
+            @workflowEvent.Sequence @workflowEvent.EventType @DisplayStatus(workflowEvent.Status)
+            @workflowEvent.Summary
+        </MudListItem>
+    }
+</MudList>
+
+@code {
+    [Parameter]
+    public Guid WorkflowRunId { get; set; }
+
+    [Inject]
+    private HttpClient Http { get; set; } = default!;
+
+    private readonly CancellationTokenSource pollingCancellation = new();
+    private ClaimWorkflowRunDto? workflow;
+    private List<WorkflowEventDto> events = [];
+    private bool approvalSubmitting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Refresh();
+        _ = PollForUpdates();
+    }
+
+    private async Task PollForUpdates()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(pollingCancellation.Token))
+            {
+                await Refresh();
+                await InvokeAsync(StateHasChanged);
+
+                if (workflow?.Status is "Completed" or "Rejected" or "Cancelled" or "Expired" or "Failed")
+                {
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal component disposal stops polling.
+        }
+    }
+
+    private async Task Refresh()
+    {
+        workflow = await Http.GetFromJsonAsync<ClaimWorkflowRunDto>(
+            $"api/claim-workflows/{WorkflowRunId}",
+            pollingCancellation.Token);
+        events = await Http.GetFromJsonAsync<List<WorkflowEventDto>>(
+            $"api/claim-workflows/{WorkflowRunId}/events",
+            pollingCancellation.Token) ?? [];
+    }
+
+    private static string DisplayStatus(string status) => status switch
+    {
+        "WaitingForApproval" => "Waiting for Approval",
+        "ResumeQueued" => "Resume queued",
+        _ => status,
+    };
+
+    private static Color StatusColor(string status) => status switch
+    {
+        "WaitingForApproval" => Color.Secondary,
+        "Completed" => Color.Success,
+        "Rejected" or "Failed" or "Expired" => Color.Error,
+        _ => Color.Primary,
+    };
+
+    private async Task SubmitApproval(string action)
+    {
+        if (workflow?.ApprovalRequestId is not Guid approvalRequestId)
+        {
+            return;
+        }
+
+        approvalSubmitting = true;
+        var response = await Http.PostAsJsonAsync(
+            $"api/claim-approvals/{approvalRequestId}/{action}",
+            new ApprovalDecisionRequest("Reviewer", null),
+            pollingCancellation.Token);
+        if (response.IsSuccessStatusCode)
+        {
+            await Refresh();
+        }
+        else
+        {
+            approvalSubmitting = false;
+        }
+    }
+
+    private string ActiveStage(string status) => status switch
+    {
+        "WaitingForApproval" => "Human Approval",
+        "Running" when events.Any(workflowEvent => workflowEvent.EventType == "WorkflowResumed") =>
+            "Claim Decision",
+        "Running" => events.LastOrDefault()?.Stage ?? "Workflow",
+        _ => "None",
+    };
+
+    public ValueTask DisposeAsync()
+    {
+        pollingCancellation.Cancel();
+        pollingCancellation.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

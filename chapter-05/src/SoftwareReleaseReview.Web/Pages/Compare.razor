@@ -1,0 +1,65 @@
+@page "/compare"
+@inject HttpClient Http
+
+<PageTitle>Compare Runs</PageTitle>
+<SiteNav />
+<header class="sub-hero"><div><span class="eyebrow">DETERMINISTIC METRICS</span><h1>Compare Runs</h1><p>Select two to four persisted runs—ideally the same request through every pattern.</p></div></header>
+<main class="page-shell">
+    @if (runs is null) { <p>Loading runs…</p> }
+    else
+    {
+        <div class="compare-picker">
+            @foreach (var run in runs)
+            {
+                <label><input type="checkbox" checked="@selectedIds.Contains(run.Id)" @onchange="e => Toggle(run.Id, e.Value is true)" disabled="@(!selectedIds.Contains(run.Id) && selectedIds.Count >= 4)" />
+                    <strong>@run.Pattern</strong><span>@Short(run.ReleaseRequest)</span><small>@run.DurationMilliseconds ms</small></label>
+            }
+        </div>
+        <button class="run-button" disabled="@(selectedIds.Count < 2)" @onclick="CompareAsync">Compare selected runs →</button>
+        @if (comparison is not null)
+        {
+            <div class="comparison-table-wrap"><table class="comparison-table">
+                <thead><tr><th>Metric</th>@foreach (var run in comparison.Runs) { <th>@run.Pattern</th> }</tr></thead>
+                <tbody>
+                    <tr><th>Duration</th>@foreach (var run in comparison.Runs) { <td>@run.DurationMilliseconds ms</td> }</tr>
+                    <tr><th>Agent executions</th>@foreach (var run in comparison.Runs) { <td>@run.AgentExecutions</td> }</tr>
+                    <tr><th>Unique agents</th>@foreach (var run in comparison.Runs) { <td>@run.UniqueAgents</td> }</tr>
+                    <tr><th>Handoffs</th>@foreach (var run in comparison.Runs) { <td>@Value(run.Handoffs)</td> }</tr>
+                    <tr><th>Conversation turns</th>@foreach (var run in comparison.Runs) { <td>@Value(run.ConversationTurns)</td> }</tr>
+                    <tr><th>Parallel branches</th>@foreach (var run in comparison.Runs) { <td>@Value(run.ParallelBranches)</td> }</tr>
+                    <tr><th>Execution order / path</th>@foreach (var run in comparison.Runs) { <td>@string.Join(" → ", run.ExecutionOrder)</td> }</tr>
+                    <tr><th>Slowest branch</th>@foreach (var run in comparison.Runs) { <td>@(run.SlowestBranch ?? "N/A")</td> }</tr>
+                    <tr><th>Max turns reached</th>@foreach (var run in comparison.Runs) { <td>@(run.MaximumTurnsReached?.ToString() ?? "N/A")</td> }</tr>
+                    <tr><th>Final decision</th>@foreach (var run in comparison.Runs) { <td class="decision-cell">@run.FinalDecision</td> }</tr>
+                </tbody>
+            </table></div>
+            @foreach (var run in comparison.Runs)
+            {
+                @if (run.ConcurrentTiming is not null)
+                {
+                    <section class="metric-detail"><h2>Concurrent timing</h2>
+                        <p>Fan-out @Clock(run.ConcurrentTiming.FanOutStarted) · Fan-in @Clock(run.ConcurrentTiming.FanInStarted) · Total @run.ConcurrentTiming.TotalDurationMilliseconds ms · Overlap: @(run.ConcurrentTiming.ExecutionsOverlap ? "Yes" : "Not observed")</p>
+                        @foreach (var branch in run.ConcurrentTiming.Branches)
+                        { <div class="detail-row"><strong>@branch.Agent</strong><span>@branch.DurationMilliseconds ms</span><span>@Clock(branch.StartedAt) → @Clock(branch.CompletedAt)</span></div> }
+                    </section>
+                }
+                @if (run.Pattern == "Handoff")
+                { <section class="metric-detail"><h2>Handoff path</h2><p>@string.Join(" → ", run.HandoffPath)</p></section> }
+                @if (run.Pattern == "GroupChat")
+                { <section class="metric-detail"><h2>Group Chat contributions</h2><p>@string.Join(" · ", run.Contributions?.Select(x => $"{x.Key}: {x.Value}") ?? Enumerable.Empty<string>())</p></section> }
+            }
+        }
+    }
+</main>
+
+@code {
+    private IReadOnlyList<ReviewRun>? runs;
+    private readonly HashSet<Guid> selectedIds = [];
+    private RunComparison? comparison;
+    protected override async Task OnInitializedAsync() => runs = await Http.GetFromJsonAsync<ReviewRun[]>("api/reviews/runs") ?? [];
+    private void Toggle(Guid id, bool enabled) { if (enabled) selectedIds.Add(id); else selectedIds.Remove(id); comparison = null; }
+    private async Task CompareAsync() => comparison = await Http.GetFromJsonAsync<RunComparison>($"api/reviews/compare?ids={string.Join(',', selectedIds)}");
+    private static string Value(int? value) => value?.ToString() ?? "N/A";
+    private static string Short(string value) => value.Length <= 70 ? value : value[..67] + "…";
+    private static string Clock(DateTimeOffset value) => value.ToLocalTime().ToString("HH:mm:ss.fff");
+}

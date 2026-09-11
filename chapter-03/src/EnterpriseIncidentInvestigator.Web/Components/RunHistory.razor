@@ -1,0 +1,14 @@
+<MudPaper Class="pa-4" Elevation="2">
+    <MudText Typo="Typo.h6" Class="mb-3">Recent investigations</MudText>
+    @if (Runs.Count == 0) { <MudText Color="Color.Secondary">No persisted runs yet.</MudText> }
+    @foreach (var item in Runs)
+    {
+        <MudPaper Outlined="true" Class="pa-3 mb-2 history-item" @onclick="() => OnSelected.InvokeAsync(item.RunId)">
+            <div class="d-flex justify-space-between"><MudText Typo="Typo.subtitle2">@Short(item.RunId)</MudText><MudChip T="string" Size="Size.Small" Color="@StatusColor(item.Status)">@item.Status</MudChip></div>
+            <MudText Typo="Typo.body2" Class="my-1">@item.Incident</MudText>
+            <MudText Typo="Typo.caption">@item.StartedAt.ToLocalTime().ToString("g") · @(item.DurationMilliseconds?.ToString() ?? "—") ms</MudText>
+            <MudText Typo="Typo.caption" Class="d-block">@(item.AgentsUsed.Count == 0 ? "No agents yet" : string.Join(" → ", item.AgentsUsed))</MudText>
+        </MudPaper>
+    }
+</MudPaper>
+@code { [Parameter, EditorRequired] public IReadOnlyList<InvestigationRunSummary> Runs { get; set; } = []; [Parameter] public Guid? Selected { get; set; } [Parameter] public EventCallback<Guid> OnSelected { get; set; } private static string Short(Guid id) => id.ToString("N")[..8]; private static Color StatusColor(string s) => s switch { "Completed" => Color.Success, "Failed" => Color.Error, "LimitReached" => Color.Warning, _ => Color.Info }; }

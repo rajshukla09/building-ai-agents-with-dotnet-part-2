@@ -1,0 +1,67 @@
+@page "/approved-claims"
+
+<MudStack Spacing="3">
+    <MudText Typo="Typo.h4">Approved Claims</MudText>
+
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudTable Items="items" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Claimant</MudTh>
+                <MudTh>Amount</MudTh>
+                <MudTh>Risk</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Details</MudTh>
+                <MudTh>Workflow</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Claimant">@context.ClaimantName</MudTd>
+                <MudTd DataLabel="Amount">@context.ClaimedAmount.ToString("C")</MudTd>
+                <MudTd DataLabel="Risk">@context.RiskLevel (@context.RiskScore)</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="Color.Success" Variant="Variant.Filled" Size="Size.Small">
+                        Approved
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Details">
+                    <MudLink Href="@($"/claim-approvals/{context.ApprovalRequestId}")">
+                        View claim details
+                    </MudLink>
+                </MudTd>
+                <MudTd DataLabel="Workflow">
+                    <MudLink Href="@($"/claim-workflows/{context.WorkflowRunId}/live")">
+                        View workflow
+                    </MudLink>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4">No claims have been approved yet.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error">@error</MudAlert>
+    }
+</MudStack>
+
+@code {
+    [Inject]
+    private HttpClient Http { get; set; } = default!;
+
+    private List<ClaimApprovalSummary> items = [];
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            items = await Http.GetFromJsonAsync<List<ClaimApprovalSummary>>(
+                "api/claim-approvals?status=Approved") ?? [];
+        }
+        catch (HttpRequestException exception)
+        {
+            error = $"Approved claims could not be loaded: {exception.Message}";
+        }
+    }
+}

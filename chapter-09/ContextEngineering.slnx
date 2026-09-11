@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ContextEngineering.Api/ContextEngineering.Api.csproj" />
+    <Project Path="src/ContextEngineering.Web/ContextEngineering.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ContextEngineering.Tests/ContextEngineering.Tests.csproj" />
+  </Folder>
+</Solution>

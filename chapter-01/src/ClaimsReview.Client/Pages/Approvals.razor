@@ -1,0 +1,103 @@
+@page "/claim-approvals"
+
+<MudStack Spacing="3">
+    <MudText Typo="Typo.h4">Pending Approvals</MudText>
+
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudTable Items="items" Hover="true" Striped="true" Dense="false">
+            <HeaderContent>
+                <MudTh>Claimant</MudTh>
+                <MudTh>Amount</MudTh>
+                <MudTh>Risk</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+                <MudTh>Workflow</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Claimant">@context.ClaimantName</MudTd>
+                <MudTd DataLabel="Amount">@context.ClaimedAmount.ToString("C")</MudTd>
+                <MudTd DataLabel="Risk">@context.RiskLevel (@context.RiskScore)</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small">
+                        Waiting for Approval
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Color="Color.Success"
+                                   Variant="Variant.Filled"
+                                   Size="Size.Small"
+                                   Disabled="@submitting.Contains(context.ApprovalRequestId)"
+                                   OnClick='@(() => Decide(context, "approve"))'>
+                            Approve
+                        </MudButton>
+                        <MudButton Color="Color.Error"
+                                   Variant="Variant.Filled"
+                                   Size="Size.Small"
+                                   Disabled="@submitting.Contains(context.ApprovalRequestId)"
+                                   OnClick='@(() => Decide(context, "reject"))'>
+                            Reject
+                        </MudButton>
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="Workflow">
+                    <MudLink Href="@($"/claim-workflows/{context.WorkflowRunId}/live")">
+                        View workflow
+                    </MudLink>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4">There are no pending approvals.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error">@error</MudAlert>
+    }
+</MudStack>
+
+@code {
+    [Inject]
+    private HttpClient Http { get; set; } = default!;
+
+    private readonly HashSet<Guid> submitting = [];
+    private List<ClaimApprovalSummary> items = [];
+    private string? error;
+
+    protected override Task OnInitializedAsync() => Refresh();
+
+    private async Task Decide(ClaimApprovalSummary approval, string action)
+    {
+        if (!submitting.Add(approval.ApprovalRequestId))
+        {
+            return;
+        }
+
+        error = null;
+        try
+        {
+            var response = await Http.PostAsJsonAsync(
+                $"api/claim-approvals/{approval.ApprovalRequestId}/{action}",
+                new ApprovalDecisionRequest("Reviewer", null));
+            if (!response.IsSuccessStatusCode)
+            {
+                error = $"The {action} request failed ({(int)response.StatusCode}).";
+                return;
+            }
+
+            await Refresh();
+        }
+        finally
+        {
+            submitting.Remove(approval.ApprovalRequestId);
+        }
+    }
+
+    private async Task Refresh()
+    {
+        items = await Http.GetFromJsonAsync<List<ClaimApprovalSummary>>(
+            "api/claim-approvals?status=Pending") ?? [];
+    }
+}

@@ -1,0 +1,7 @@
+<div class="node @CssStatus">@Name <small>@Status</small></div>
+
+@code {
+    [Parameter, EditorRequired] public required string Name { get; set; }
+    [Parameter, EditorRequired] public required string Status { get; set; }
+    private string CssStatus => Status.ToLowerInvariant().Replace(' ', '-');
+}

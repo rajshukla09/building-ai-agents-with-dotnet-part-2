@@ -1,0 +1,12 @@
+@if (Result.Status == "Failed")
+{
+    <section class="failure-panel" role="alert">
+        <div><span>SecurityReview</span><strong>FAILED</strong></div>
+        <p>@(Result.Error ?? "Workflow execution failed.")</p>
+        <div><span>ReleaseDecision</span><strong>Not Executed</strong></div>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public required ReleaseReviewResponse Result { get; set; }
+}

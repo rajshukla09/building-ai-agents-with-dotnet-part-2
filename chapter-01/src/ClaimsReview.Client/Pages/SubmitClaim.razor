@@ -1,0 +1,111 @@
+@page "/"
+
+<h1>Submit Claim</h1>
+
+<MudSelect T="string" Label="Scenario preset" @bind-Value="preset" @bind-Value:after="ApplyPreset">
+    <MudSelectItem T="string" Value='"Low"'>Low-Risk Auto Approval</MudSelectItem>
+    <MudSelectItem T="string" Value='"HighAmount"'>High Amount Requires Approval</MudSelectItem>
+    <MudSelectItem T="string" Value='"HighRisk"'>High Risk Requires Approval</MudSelectItem>
+    <MudSelectItem T="string" Value='"Validation"'>Validation Failure</MudSelectItem>
+    <MudSelectItem T="string" Value='"Reject"'>Human Rejection</MudSelectItem>
+    <MudSelectItem T="string" Value='"Expiry"'>Approval Expiry</MudSelectItem>
+</MudSelect>
+
+<MudTextField Label="Policy number" @bind-Value="policy" />
+<MudTextField Label="Claimant name" @bind-Value="name" />
+<MudTextField Label="Claim type" @bind-Value="type" />
+<MudTextField Label="Description" @bind-Value="description" Lines="3" />
+<MudNumericField Label="Claimed amount" @bind-Value="amount" />
+<MudDatePicker Label="Incident date" @bind-Date="incident" />
+<MudTextField Label="Supporting evidence descriptions" @bind-Value="evidence" Lines="3" />
+<MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="submitting" OnClick="Start">
+    Start Workflow
+</MudButton>
+
+@if (error is not null)
+{
+    <MudAlert Severity="Severity.Error">@error</MudAlert>
+}
+
+@code {
+    [Inject]
+    private HttpClient Http { get; set; } = default!;
+
+    [Inject]
+    private NavigationManager Nav { get; set; } = default!;
+
+    private string preset = "Low";
+    private string policy = "POL-10021";
+    private string name = "Anita Sharma";
+    private string type = "VehicleDamage";
+    private string description = "The insured vehicle was damaged while parked.";
+    private string evidence = "vehicle-front-photo.jpg\nvehicle-side-photo.jpg";
+    private decimal amount = 12000;
+    private DateTime? incident = DateTime.UtcNow.Date.AddDays(-1);
+    private bool submitting;
+    private string? error;
+
+    private void ApplyPreset()
+    {
+        amount = preset == "HighAmount" ? 85000 : 12000;
+        description = preset == "HighRisk"
+            ? "Possible fraud indicators require review."
+            : "The insured vehicle was damaged while parked.";
+        policy = preset == "Validation" ? "" : "POL-10021";
+        evidence = "vehicle-front-photo.jpg\nvehicle-side-photo.jpg";
+    }
+
+    private async Task Start()
+    {
+        submitting = true;
+        error = null;
+
+        try
+        {
+            var request = new ClaimSubmissionRequest(
+                policy,
+                name,
+                type,
+                description,
+                amount,
+                DateOnly.FromDateTime(incident ?? DateTime.UtcNow),
+                evidence.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+            var response = await Http.PostAsJsonAsync("api/claim-workflows", request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                error = $"The claims API returned {(int)response.StatusCode} "
+                    + $"({response.ReasonPhrase}). Verify that ClaimsReview.Api is running.";
+                return;
+            }
+
+            if (response.Content.Headers.ContentLength == 0)
+            {
+                error = "The claims API returned an empty response. "
+                    + "Verify the API address and server logs.";
+                return;
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<StartClaimWorkflowResponse>();
+            if (body is null)
+            {
+                error = "The claims API did not return a workflow run.";
+                return;
+            }
+
+            Nav.NavigateTo($"/claim-workflows/{body.WorkflowRunId}/live");
+        }
+        catch (HttpRequestException exception)
+        {
+            error = $"Could not contact the claims API at {Http.BaseAddress}: {exception.Message}";
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            error = "The claims API returned an invalid response. Verify the configured API address.";
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+}

@@ -1,0 +1,5 @@
+:root{font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#172033;background:#f4f6fa;--app-line:#dbe2ed;--app-radius:14px;--app-shadow:0 5px 20px #1720330c}
+html,body{margin:0;background:#f4f6fa}
+.mud-paper{border-radius:var(--app-radius)}
+.mud-card{border:1px solid var(--app-line);box-shadow:var(--app-shadow)}
+.status-running{color:#0369a1;background:#e0f2fe}.status-completed{color:#166534;background:#dcfce7}.status-failed{color:#991b1b;background:#fee2e2}.status-waiting,.status-pending{color:#92400e;background:#fef3c7}.status-cancelled{color:#475569;background:#e2e8f0}

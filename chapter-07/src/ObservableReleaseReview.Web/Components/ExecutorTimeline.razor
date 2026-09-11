@@ -1,0 +1,24 @@
+<section class="panel" aria-labelledby="timeline-heading">
+    <h2 id="timeline-heading">Executor timeline</h2>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Component</th><th>Duration</th><th>Status</th></tr></thead>
+            <tbody>
+                @foreach (var executor in Result.Executors)
+                {
+                    <tr>
+                        <td>@executor.Name</td>
+                        <td>@(executor.DurationMs is null ? "See trace" : $"{executor.DurationMs} ms")</td>
+                        <td><span class="badge @Css(executor.Status)">@executor.Status</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="hint">Executor timestamps remain in the native OpenTelemetry trace; the API does not copy raw spans into this view.</p>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required ReleaseReviewResponse Result { get; set; }
+    private static string Css(string status) => status.ToLowerInvariant().Replace(' ', '-');
+}

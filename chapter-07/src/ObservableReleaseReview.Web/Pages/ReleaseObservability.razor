@@ -1,0 +1,90 @@
+@page "/"
+@inject ObservableReleaseReview.Web.Services.ReleaseReviewApiClient Api
+@inject IConfiguration Configuration
+
+<PageTitle>Release Review Observability</PageTitle>
+
+<header class="hero">
+    <div class="shell">
+        <span class="eyebrow">CHAPTER 17 · MAF + OPENTELEMETRY</span>
+        <h1>Release Review Observability</h1>
+        <p>See the workflow path and failure point. Use the distributed trace for full native telemetry.</p>
+    </div>
+</header>
+
+<main class="shell">
+    <section class="panel request-panel">
+        <label for="release">Release text</label>
+        <textarea id="release" @bind="release" rows="4"></textarea>
+        <label class="checkbox"><input type="checkbox" @bind="simulateFailure" /> Simulate Failure</label>
+        <button class="run-button" @onclick="RunAsync" disabled="@(busy || string.IsNullOrWhiteSpace(release))">
+            @(busy ? "Running…" : "Run review")
+        </button>
+    </section>
+
+    @if (error is not null)
+    {
+        <div class="failure-panel" role="alert">@error</div>
+    }
+
+    @if (result is not null)
+    {
+        <RunSummary Result="result" />
+        <div class="route-callout">
+            <strong>@result.RoutingOutcome</strong>
+            <span>ExtraReview @(result.HighRisk ? "executed" : "skipped")</span>
+        </div>
+        <WorkflowFlow Result="result" />
+        <FailureDetails Result="result" />
+        <ExecutorTimeline Result="result" />
+        <FanOutFanInView Result="result" />
+
+        <details class="panel telemetry">
+            <summary>Telemetry Details</summary>
+            <dl>
+                <div><dt>Trace / run ID</dt><dd class="mono">@result.RunId</dd></div>
+                <div><dt>Routing outcome</dt><dd>@result.RoutingOutcome</dd></div>
+                @foreach (var executor in result.Executors)
+                {
+                    <div><dt>@executor.Name</dt><dd>@executor.Status · @(executor.DurationMs is null ? "timing in trace" : $"{executor.DurationMs} ms")</dd></div>
+                }
+            </dl>
+            @if (!string.IsNullOrWhiteSpace(traceViewerUrl))
+            {
+                <a class="trace-link" href="@traceViewerUrl" target="_blank" rel="noopener noreferrer">Open distributed trace ↗</a>
+            }
+        </details>
+    }
+</main>
+
+@code {
+    private string release = "Release 4.8 contains authentication and payment changes.";
+    private bool simulateFailure;
+    private bool busy;
+    private string? error;
+    private ReleaseReviewResponse? result;
+    private string? traceViewerUrl;
+
+    protected override void OnInitialized() =>
+        traceViewerUrl = Configuration["TraceViewerUrl"];
+
+    private async Task RunAsync()
+    {
+        busy = true;
+        error = null;
+        result = null;
+
+        try
+        {
+            result = await Api.ReviewAsync(new ReleaseReviewRequest(release, simulateFailure));
+        }
+        catch (Exception exception)
+        {
+            error = $"Request failed: {exception.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

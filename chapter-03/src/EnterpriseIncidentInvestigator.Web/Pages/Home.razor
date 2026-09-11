@@ -1,0 +1,29 @@
+@page "/"
+@implements IAsyncDisposable
+@inject HttpClient Http
+
+<PageTitle>Multi-Agent Orchestration Viewer</PageTitle>
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-6">
+    <MudText Typo="Typo.h3">Multi-Agent Orchestration Viewer</MudText>
+    <MudText Color="Color.Secondary" Class="mb-5">Observe the path MAF actually selected—not a predefined workflow.</MudText>
+    <MudGrid>
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-5 mb-5" Elevation="2">
+                <MudTextField @bind-Value="incident" Label="Production incident" Variant="Variant.Outlined" Lines="3" Disabled="running" />
+                <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(running || string.IsNullOrWhiteSpace(incident))" OnClick="Investigate">@(running ? "Investigating…" : "Investigate")</MudButton>
+            </MudPaper>
+            @if (run is not null) { <RunViewer Run="run" /> }
+        </MudItem>
+        <MudItem xs="12" md="4"><RunHistory Runs="history" Selected="run?.Run.RunId" OnSelected="OpenRun" /></MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private string incident = "Checkout failures increased after this morning's deployment."; private bool running; private InvestigationRunView? run; private IReadOnlyList<InvestigationRunSummary> history = []; private HubConnection? hub;
+    protected override async Task OnInitializedAsync() { await LoadHistory(); hub = new HubConnectionBuilder().WithUrl(new Uri(Http.BaseAddress!, "hubs/investigations")).WithAutomaticReconnect().Build(); hub.On<Guid>("InvestigationUpdated", async id => { if (run?.Run.RunId == id || running) { await Refresh(id); await InvokeAsync(StateHasChanged); } }); await hub.StartAsync(); }
+    private async Task Investigate() { running = true; var id = Guid.NewGuid(); run = new(new(id, incident, "Queued", DateTimeOffset.UtcNow, null, null, []), [], null, 0, 0); if (hub is not null) await hub.InvokeAsync("WatchRun", id); StateHasChanged(); try { await Http.PostAsJsonAsync("api/incidents/investigate", new InvestigateIncidentRequest(incident, id)); await Refresh(id); await LoadHistory(); } finally { running = false; } }
+    private async Task Refresh(Guid id) { run = await Http.GetFromJsonAsync<InvestigationRunView>($"api/incidents/runs/{id}") ?? run; }
+    private async Task LoadHistory() => history = await Http.GetFromJsonAsync<IReadOnlyList<InvestigationRunSummary>>("api/incidents/runs") ?? [];
+    private async Task OpenRun(Guid id) { if (hub is not null) await hub.InvokeAsync("WatchRun", id); await Refresh(id); }
+    public async ValueTask DisposeAsync() { if (hub is not null) await hub.DisposeAsync(); }
+}

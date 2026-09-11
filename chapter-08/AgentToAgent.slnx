@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/DestinationExpert.Api/DestinationExpert.Api.csproj" />
+  <Project Path="src/TravelCoordinator.Api/TravelCoordinator.Api.csproj" />
+  <Project Path="tests/AgentToAgent.Tests/AgentToAgent.Tests.csproj" />
+</Solution>

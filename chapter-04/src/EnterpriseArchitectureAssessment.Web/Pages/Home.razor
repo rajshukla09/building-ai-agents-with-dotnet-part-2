@@ -1,0 +1,384 @@
+@page "/"
+@inject HttpClient Http
+@inject Microsoft.Extensions.Logging.ILogger<Home> Logger
+
+<PageTitle>Magentic Assessment Viewer</PageTitle>
+
+<header>
+    <p class="eyebrow">CHAPTER 14 · MAF MAGENTIC</p>
+    <h1>Enterprise Architecture Assessment</h1>
+    <p>Watch an autonomous team create, evaluate, and revise a plan—not merely choose the next agent.</p>
+</header>
+
+<main>
+    <nav class="tabs" aria-label="Assessment views">
+        <button class="@(mode == "assessment" ? "active" : null)" @onclick='() => mode = "assessment"'>Assessment</button>
+        <button class="@(mode == "history" ? "active" : null)" @onclick="ShowHistoryAsync">Run History</button>
+        <button class="@(mode == "compare" ? "active" : null)" @onclick="ShowCompareAsync">Compare Runs</button>
+    </nav>
+    @if (mode == "assessment")
+    {
+    <section class="compose">
+        <label>Objective</label>
+        <textarea @bind="objective" rows="4"></textarea>
+        <div class="scenarios">
+            <button type="button" @onclick="() => Set(Full)">Full migration</button>
+            <button type="button" @onclick="() => Set(Cost)">Cost-constrained</button>
+            <button type="button" @onclick="() => Set(Scale)">Scalability crisis</button>
+        </div>
+        <button type="button" class="run" disabled="@(busy || string.IsNullOrWhiteSpace(objective))" @onclick="RunAsync">
+            @(busy ? "Assessing…" : "Start Magentic assessment")
+        </button>
+        @if (busy)
+        {
+            <p class="notice" role="status">The Magentic workflow is running. This can take several minutes.</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="error" role="alert">
+                <strong>Assessment failed</strong>
+                <p>@errorMessage</p>
+            </div>
+        }
+    </section>
+
+    @if (view is not null)
+    {
+        <section class="hero">
+            <span class="status">@view.Status</span>
+            <h2>@view.Objective</h2>
+            @if (view.ProgressEvaluations.Count > 0)
+            {
+                <p>@view.ProgressEvaluations[^1]</p>
+            }
+        </section>
+        <div class="grid">
+            @if (view.InitialPlan is not null)
+            {
+            <section>
+                <h3>Initial plan</h3>
+                @Plan(view.InitialPlan)
+            </section>
+            }
+            @if (view.CurrentPlan is not null)
+            {
+            <section>
+                <h3>Current plan</h3>
+                @Plan(view.CurrentPlan)
+            </section>
+            }
+            @if (view.PlanRevisions.Count > 0)
+            {
+            <section>
+                <h3>Plan revisions</h3>
+                @foreach (var revision in view.PlanRevisions)
+                {
+                    <article>
+                        <b>Plan v@revision.FromVersion → v@revision.ToVersion</b>
+                        <p>@revision.Evidence</p><small>@revision.Change</small>
+                    </article>
+                }
+            </section>
+            }
+            @if (view.AgentInvocations.Count > 0)
+            {
+            <section>
+                <h3>Agent delegations</h3>
+                <ol>
+                    @foreach (var invocation in view.AgentInvocations)
+                    {
+                        <li><b>@invocation.Agent</b>@if (!string.IsNullOrWhiteSpace(invocation.Task)) { <span> — @invocation.Task</span> }</li>
+                    }
+                </ol>
+            </section>
+            }
+            @if (view.AgentInvocations.Any(x => !string.IsNullOrWhiteSpace(x.Result)))
+            {
+            <section class="wide">
+                <h3>Agent findings</h3>
+                @foreach (var invocation in view.AgentInvocations.Where(x => !string.IsNullOrWhiteSpace(x.Result)))
+                {
+                    <article>
+                        <b>@invocation.Agent</b>
+                        <p>@invocation.Result</p>
+                    </article>
+                }
+            </section>
+            }
+            @if (view.ToolInvocations.Count > 0)
+            {
+            <section>
+                <h3>MCP calls</h3>
+                @foreach (var call in view.ToolInvocations)
+                {
+                    <p><b>@call.Server</b> → MCP server → <code>@call.Tool</code> @(call.CacheHit ? "(cached duplicate)" : "")</p>
+                }
+            </section>
+            }
+            @if (view.OpenQuestions.Count > 0)
+            {
+            <section>
+                <h3>Open questions</h3>
+                <ul>
+                    @foreach (var question in view.OpenQuestions)
+                    {
+                        <li>@question</li>
+                    }
+                </ul>
+            </section>
+            }
+            @if (view.Conflicts.Count > 0)
+            {
+            <section>
+                <h3>Conflicts</h3>
+                @foreach (var conflict in view.Conflicts)
+                {
+                    <article>
+                        <b>@conflict.Topic</b>
+                        @if (!string.IsNullOrWhiteSpace(conflict.Resolution))
+                        {
+                            <p>@conflict.Resolution</p>
+                        }
+                    </article>
+                }
+            </section>
+            }
+            @if (view.ProgressEvaluations.Count > 0)
+            {
+            <section>
+                <h3>Progress evaluation</h3>
+                @foreach (var evaluation in view.ProgressEvaluations) { <p>@evaluation</p> }
+            </section>
+            }
+            @if (!string.IsNullOrWhiteSpace(view.FinalRecommendation))
+            {
+            <section class="wide final">
+                <h3>Final recommendation</h3>
+                <p>@view.FinalRecommendation</p>
+                <small>@view.CompletionReason @(view.LimitReached ? " · Guardrail reached" : "")</small>
+            </section>
+            }
+            <section class="wide">
+                <h3>Event timeline</h3>
+                <ol class="timeline">
+                    @foreach (var assessmentEvent in view.Events)
+                    {
+                        <li>
+                            <time>@assessmentEvent.At.ToLocalTime().ToString("T")</time>
+                            <b>@assessmentEvent.Type</b>
+                            <span>@assessmentEvent.Summary</span>
+                        </li>
+                    }
+                </ol>
+            </section>
+        </div>
+    }
+    }
+    else if (mode == "history")
+    {
+        <section>
+            <h2>Run History</h2>
+            <div class="table-scroll">
+                <table>
+                    <thead><tr><th>Run</th><th>Objective</th><th>Status</th><th>Started</th><th>Duration</th><th>Agents</th><th>MCP calls</th><th>Revisions</th><th>Recommendation</th></tr></thead>
+                    <tbody>
+                    @foreach (var run in history)
+                    {
+                        <tr @onclick="() => OpenRun(run)" tabindex="0">
+                            <td><code>@run.Id.ToString()[..8]</code></td><td>@run.Objective</td><td>@run.Status</td>
+                            <td>@run.StartedAt.ToLocalTime().ToString("g")</td><td>@Duration(run.DurationMilliseconds)</td>
+                            <td>@run.AgentInvocations.Count</td><td>@run.ToolInvocations.Count</td><td>@run.PlanRevisions.Count</td>
+                            <td>@Summary(run.FinalRecommendation)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+    else
+    {
+        <section>
+            <h2>Compare Runs</h2>
+            <div class="compare-selectors">
+                <label>Run A <select @bind="leftId">@RunOptions()</select></label>
+                <label>Run B <select @bind="rightId">@RunOptions()</select></label>
+                <button class="run" @onclick="CompareAsync" disabled="@(leftId == Guid.Empty || rightId == Guid.Empty || leftId == rightId)">Compare</button>
+            </div>
+            @if (comparison is not null)
+            {
+                <div class="table-scroll"><table class="comparison">
+                    <thead><tr><th>Metric</th><th>Run A</th><th>Run B</th></tr></thead>
+                    <tbody>
+                        @CompareRow("Duration", Duration(comparison.Left.DurationMilliseconds), Duration(comparison.Right.DurationMilliseconds))
+                        @CompareRow("Agent invocations", comparison.Left.AgentInvocations, comparison.Right.AgentInvocations)
+                        @CompareRow("Agents used", string.Join(", ", comparison.Left.UniqueAgents), string.Join(", ", comparison.Right.UniqueAgents))
+                        @CompareRow("MCP calls", comparison.Left.McpCalls, comparison.Right.McpCalls)
+                        @CompareRow("MCP tools", string.Join(", ", comparison.Left.UniqueMcpTools), string.Join(", ", comparison.Right.UniqueMcpTools))
+                        @CompareRow("Plan revisions", comparison.Left.PlanRevisions, comparison.Right.PlanRevisions)
+                        @CompareRow("Failed tool calls", comparison.Left.FailedToolCalls, comparison.Right.FailedToolCalls)
+                        @CompareRow("Cache hits", comparison.Left.CacheHits, comparison.Right.CacheHits)
+                        @CompareRow("Limit reached", comparison.Left.LimitReached ? "Yes" : "No", comparison.Right.LimitReached ? "Yes" : "No")
+                        @CompareRow("Initial plan", PlanText(comparison.Left.InitialPlan), PlanText(comparison.Right.InitialPlan))
+                        @CompareRow("Final plan", PlanText(comparison.Left.CurrentPlan), PlanText(comparison.Right.CurrentPlan))
+                        @CompareRow("Completion reason", comparison.Left.CompletionReason, comparison.Right.CompletionReason)
+                        @CompareRow("Final recommendation", comparison.Left.FinalRecommendation, comparison.Right.FinalRecommendation)
+                        @CompareRow("Model / deployment", comparison.Left.Configuration.ModelDeployment, comparison.Right.Configuration.ModelDeployment)
+                        @CompareRow("Limits", Limits(comparison.Left.Configuration), Limits(comparison.Right.Configuration))
+                        @CompareRow("Instruction version", comparison.Left.Configuration.InstructionVersion, comparison.Right.Configuration.InstructionVersion)
+                    </tbody>
+                </table></div>
+            }
+        </section>
+    }
+</main>
+
+@code {
+    private const string Full = "Should we migrate the entire order platform to event-driven microservices?";
+    private const string Cost = "We need to reduce infrastructure and support cost by 20%. Should we still move to microservices?";
+    private const string Scale = "Payment processing cannot handle seasonal traffic spikes. Assess what architecture changes we should make.";
+
+    private string objective = Full;
+    private bool busy;
+    private string? errorMessage;
+    private View? view;
+    private string mode = "assessment";
+    private List<View> history = [];
+    private Guid leftId;
+    private Guid rightId;
+    private Comparison? comparison;
+
+    private void Set(string value) => objective = value;
+
+    private async Task RunAsync()
+    {
+        if (busy || string.IsNullOrWhiteSpace(objective))
+        {
+            return;
+        }
+
+        busy = true;
+        errorMessage = null;
+        Logger.LogInformation("Starting Magentic assessment request against {ApiBaseAddress}", Http.BaseAddress);
+
+        try
+        {
+            using var response = await Http.PostAsJsonAsync(
+                "api/assessments",
+                new StartAssessmentRequest(objective));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync();
+                throw new HttpRequestException(
+                    $"The assessment API returned {(int)response.StatusCode} ({response.ReasonPhrase}). {responseBody}");
+            }
+
+            view = await response.Content.ReadFromJsonAsync<View>()
+                ?? throw new InvalidOperationException("The assessment API returned an empty response.");
+
+            Logger.LogInformation(
+                "Magentic assessment completed with status {AssessmentStatus} and {EventCount} timeline events",
+                view.Status,
+                view.Events.Count);
+            await LoadHistoryAsync();
+        }
+        catch (Exception exception)
+        {
+            errorMessage = exception.Message;
+            Logger.LogError(exception, "Magentic assessment request failed for objective {Objective}", objective);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task LoadHistoryAsync() => history = await Http.GetFromJsonAsync<List<View>>("api/assessments") ?? [];
+    private async Task ShowHistoryAsync() { mode = "history"; await LoadHistoryAsync(); }
+    private async Task ShowCompareAsync()
+    {
+        mode = "compare";
+        await LoadHistoryAsync();
+        if (leftId == Guid.Empty && history.Count > 0) leftId = history[0].Id;
+        if (rightId == Guid.Empty && history.Count > 1) rightId = history[1].Id;
+    }
+    private async Task CompareAsync() => comparison = await Http.GetFromJsonAsync<Comparison>(
+        $"api/assessments/compare?left={leftId}&right={rightId}");
+    private void OpenRun(View run) { view = run; mode = "assessment"; }
+    private RenderFragment RunOptions() => builder =>
+    {
+        var sequence = 0;
+        foreach (var run in history)
+        {
+            builder.OpenElement(sequence++, "option"); builder.AddAttribute(sequence++, "value", run.Id);
+            builder.AddContent(sequence++, $"{run.StartedAt.ToLocalTime():g} · {Summary(run.FinalRecommendation)}"); builder.CloseElement();
+        }
+    };
+    private static RenderFragment CompareRow(string label, object? left, object? right) => builder =>
+    {
+        builder.OpenElement(0,"tr");
+        foreach (var value in new[] { label, left?.ToString() ?? "—", right?.ToString() ?? "—" })
+        { builder.OpenElement(1,"td"); builder.AddContent(2,value); builder.CloseElement(); }
+        builder.CloseElement();
+    };
+    private static string Duration(long? value) => value is null ? "—" : TimeSpan.FromMilliseconds(value.Value).ToString(@"m\:ss");
+    private static string Summary(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value.Length <= 100 ? value : value[..100] + "…";
+    private static string PlanText(PlanSnapshot? plan) => plan is null ? "—" : string.Join("; ", plan.Items.Select(x => x.Task));
+    private static string Limits(ConfigurationSnapshot value) => $"turns {value.MaxTurns}, agents {value.MaxAgentInvocations}, tools/agent {value.MaxToolCallsPerAgent}";
+
+    private static RenderFragment Plan(PlanSnapshot? plan) => builder =>
+    {
+        builder.OpenElement(1, "ol");
+        foreach (var task in plan!.Items)
+        {
+            builder.OpenElement(2, "li");
+            builder.AddContent(3, task.Task);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+
+    private sealed class View
+    {
+        public Guid Id { get; set; }
+        public string Objective { get; set; } = "";
+        public string Status { get; set; } = "";
+        public DateTimeOffset StartedAt { get; set; }
+        public DateTimeOffset? CompletedAt { get; set; }
+        public long? DurationMilliseconds { get; set; }
+        public ConfigurationSnapshot Configuration { get; set; } = new();
+        public PlanSnapshot? InitialPlan { get; set; }
+        public PlanSnapshot? CurrentPlan { get; set; }
+        public List<Revision> PlanRevisions { get; set; } = [];
+        public List<Finding> Findings { get; set; } = [];
+        public List<Conflict> Conflicts { get; set; } = [];
+        public List<string> OpenQuestions { get; set; } = [];
+        public List<AgentCall> AgentInvocations { get; set; } = [];
+        public List<ToolCall> ToolInvocations { get; set; } = [];
+        public List<Evt> Events { get; set; } = [];
+        public List<string> ProgressEvaluations { get; set; } = [];
+        public string? FinalRecommendation { get; set; }
+        public string? CompletionReason { get; set; }
+        public bool LimitReached { get; set; }
+    }
+
+    private sealed record PlanSnapshot(int Version, List<PlanItem> Items, string Rationale, DateTimeOffset At);
+    private sealed record PlanItem(string Task, string? DelegatedAgent, bool Completed);
+    private sealed record Revision(int FromVersion, int ToVersion, string Evidence, string Change, DateTimeOffset At);
+    private sealed record AgentCall(Guid Id, string Agent, string Task, DateTimeOffset StartedAt,
+                                    DateTimeOffset? CompletedAt, string? Result);
+    private sealed record ToolCall(Guid AgentInvocationId, string Server, string Tool, string NormalizedArguments, bool CacheHit, DateTimeOffset At,
+                                   long? DurationMilliseconds, bool Success, string? Error, string? Agent);
+    private sealed record Finding(string Agent, string Area, string Find, List<string> Evidence, double Confidence, List<string> Risks, string Recommendation, List<string> OpenQuestions);
+    private sealed record Conflict(string Topic, List<string> Positions, string Resolution);
+    private sealed record Evt(long Sequence, string Type, DateTimeOffset At, string Summary, string? Agent, string? Tool, string? PlanJson);
+    private sealed record StartAssessmentRequest(string Objective);
+    private sealed class ConfigurationSnapshot { public string ModelDeployment { get; set; } = ""; public int MaxTurns { get; set; } public int MaxAgentInvocations { get; set; } public int MaxToolCallsPerAgent { get; set; } public string InstructionVersion { get; set; } = ""; }
+    private sealed record Metrics(Guid Id, string Objective, string Status, DateTimeOffset StartedAt, long? DurationMilliseconds,
+        int AgentInvocations, List<string> UniqueAgents, int McpCalls, List<string> UniqueMcpTools,
+        Dictionary<string,int> CallsPerAgent, int PlanRevisions, int FailedToolCalls, int CacheHits, bool LimitReached,
+        int RecommendationLength, PlanSnapshot? InitialPlan, PlanSnapshot? CurrentPlan, string? CompletionReason,
+        string? FinalRecommendation, ConfigurationSnapshot Configuration);
+    private sealed record Comparison(Metrics Left, Metrics Right);
+}

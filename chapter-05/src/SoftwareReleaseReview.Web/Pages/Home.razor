@@ -1,0 +1,145 @@
+@page "/"
+@inject HttpClient Http
+@using SoftwareReleaseReview.Web.Models
+
+<PageTitle>Orchestration Patterns</PageTitle>
+<SiteNav />
+
+<header class="hero">
+    <div class="hero-inner">
+        <span class="eyebrow">CHAPTER 15 · MICROSOFT AGENT FRAMEWORK</span>
+        <h1>Orchestration Patterns</h1>
+        <p>Run one release request through four multi-agent collaboration shapes and compare how control and context move.</p>
+    </div>
+</header>
+
+<main class="page-shell">
+    <section class="request-panel" aria-labelledby="request-heading">
+        <div>
+            <span class="step">01</span>
+            <h2 id="request-heading">Release review request</h2>
+        </div>
+        <textarea @bind="release" rows="3" aria-label="Release review request"></textarea>
+        <p class="hint">The same request is used for every pattern, making the results easier to compare.</p>
+    </section>
+
+    <section aria-labelledby="pattern-heading">
+        <div class="section-heading">
+            <span class="step">02</span>
+            <div><h2 id="pattern-heading">Choose a pattern</h2><p>Each pattern solves a different coordination problem.</p></div>
+        </div>
+        <div class="pattern-grid">
+            @foreach (var item in patterns)
+            {
+                <button class="pattern-card @(selected.Key == item.Key ? "selected" : null)"
+                        @onclick="() => selected = item" aria-pressed="@(selected.Key == item.Key)">
+                    <span class="pattern-number">@item.Number</span>
+                    <strong>@item.Name</strong>
+                    <span>@item.ShortDescription</span>
+                </button>
+            }
+        </div>
+    </section>
+
+    <section class="pattern-detail" aria-live="polite">
+        <div class="detail-copy">
+            <span class="pattern-label">@selected.Name</span>
+            <h2>@selected.Description</h2>
+            <p>@selected.Explanation</p>
+            <button class="run-button" @onclick="RunAsync" disabled="@(busy || string.IsNullOrWhiteSpace(release))">
+                @if (busy) { <span class="spinner"></span><span>Running @selected.Name…</span> }
+                else { <span>Run @selected.Name</span><span aria-hidden="true">→</span> }
+            </button>
+        </div>
+        <div class="diagram" aria-label="@selected.Name agent flow">
+            @foreach (var line in selected.Diagram)
+            {
+                <div class="diagram-line @LineClass(line)">@line</div>
+            }
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="error" role="alert"><strong>Request failed.</strong> @error</div>
+    }
+
+    @if (result is not null)
+    {
+        <section class="results" aria-labelledby="result-heading">
+            <div class="section-heading">
+                <span class="step">03</span>
+                <div><h2 id="result-heading">@result.Pattern result</h2><p>Native workflow output and observable execution events.</p></div>
+            </div>
+            <article class="decision"><span>Release decision</span><p>@result.Decision</p></article>
+            <div class="timeline">
+                @foreach (var item in result.Events)
+                {
+                    <article class="event">
+                        <div class="event-marker"></div>
+                        <div><span>@EventLabel(item)</span><p>@(item.Text ?? item.RuntimeType)</p></div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+</main>
+
+<footer>Chapter 5 · Educational sample · Magentic orchestration is covered in Chapter 4</footer>
+
+@code {
+    private string release = "Release 4.8 contains authentication and payment changes.";
+    private bool busy;
+    private string? error;
+    private ReviewResponse? result;
+
+    private readonly Pattern[] patterns =
+    [
+        new("sequential", "01", "Sequential", "Dependent steps", "Use when each step depends on the previous result.",
+            "Every specialist receives the accumulated output, so findings become richer as the request moves down the chain.",
+            ["SecurityAgent", "↓", "QualityAgent", "↓", "ArchitectureAgent", "↓", "ReleaseAgent"]),
+        new("concurrent", "02", "Concurrent", "Independent work", "Use when independent tasks can run in parallel.",
+            "The request fans out to three reviewers at once. Their independent findings fan in to the ReleaseAgent.",
+            ["Release request", "↓ FAN-OUT", "Security  ·  Quality  ·  Architecture", "↓ FAN-IN", "ReleaseAgent"]),
+        new("handoff", "03", "Handoff", "Specialist routing", "Use when one specialist should transfer control to another.",
+            "The active agent chooses who is best suited to continue. Control transfers directly without a central supervisor loop.",
+            ["ReleaseAgent", "↓ HANDOFF", "SecurityAgent", "↓ when architecture context is needed", "ArchitectureAgent", "↩ ReleaseAgent"]),
+        new("group-chat", "04", "Group Chat", "Shared discussion", "Use when specialists need to collaborate and discuss.",
+            "All participants see the shared conversation, letting them challenge assumptions and build on one another's findings.",
+            ["SHARED REVIEW", "Security  ↔  Quality", "↕", "Architecture", "↓", "Shared recommendation"])
+    ];
+
+    private Pattern selected = null!;
+
+    protected override void OnInitialized() => selected = patterns[0];
+
+    private async Task RunAsync()
+    {
+        busy = true;
+        error = null;
+        result = null;
+        try
+        {
+            using var response = await Http.PostAsJsonAsync($"api/reviews/{selected.Key}", new ReviewRequest(release));
+            response.EnsureSuccessStatusCode();
+            result = await response.Content.ReadFromJsonAsync<ReviewResponse>();
+        }
+        catch (Exception exception)
+        {
+            error = $"{exception.Message} Verify that the API and Azure OpenAI configuration are available.";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static string LineClass(string line) => line.Contains('↓') || line.Contains('↕') || line.Contains('↩') ? "connector" : "agent";
+
+    private static string EventLabel(ReviewEvent item) => item.Executor is null
+        ? item.RuntimeType
+        : $"{item.Executor} · {item.RuntimeType}";
+
+    private sealed record Pattern(string Key, string Number, string Name, string ShortDescription,
+        string Description, string Explanation, string[] Diagram);
+}

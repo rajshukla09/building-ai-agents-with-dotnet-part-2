@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "DestinationExpert.Api": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "PublicUrl": "http://localhost:60062"
+      },
+      "applicationUrl": "https://localhost:60060;http://localhost:60062"
+    }
+  }
+}

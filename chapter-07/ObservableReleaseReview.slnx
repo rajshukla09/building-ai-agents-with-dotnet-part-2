@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/ObservableReleaseReview.Api/ObservableReleaseReview.Api.csproj" />
+  <Project Path="src/ObservableReleaseReview.Web/ObservableReleaseReview.Web.csproj" />
+  <Project Path="tests/ObservableReleaseReview.Tests/ObservableReleaseReview.Tests.csproj" />
+</Solution>

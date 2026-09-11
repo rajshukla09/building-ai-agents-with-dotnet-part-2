@@ -1,0 +1,38 @@
+@page "/history"
+@inject HttpClient Http
+
+<PageTitle>Run History</PageTitle>
+<SiteNav />
+<header class="sub-hero"><div><span class="eyebrow">PERSISTED IN SQLITE</span><h1>Run History</h1><p>Reopen every orchestration run after API or UI restarts.</p></div></header>
+<main class="page-shell">
+    @if (runs is null) { <p>Loading run history…</p> }
+    else if (runs.Count == 0) { <div class="empty">No runs yet. <a href="/">Run a pattern</a> to create the first record.</div> }
+    else
+    {
+        <div class="history-list">
+            @foreach (var run in runs)
+            {
+                <button class="history-row @(selected?.Id == run.Id ? "selected-run" : null)" @onclick="() => selected = run">
+                    <span class="status-dot @(run.Success ? "success" : "failure")"></span>
+                    <strong>@run.Pattern</strong><span class="request-cell">@run.ReleaseRequest</span>
+                    <span>@run.AgentExecutions.Count agents</span><span>@run.DurationMilliseconds ms</span><span>@run.Status</span>
+                </button>
+            }
+        </div>
+        @if (selected is not null)
+        {
+            <section class="run-detail">
+                <h2>@selected.Pattern · @selected.Id</h2><p class="decision-text">@selected.FinalDecision</p>
+                <h3>Agent executions</h3>
+                @foreach (var agent in selected.AgentExecutions.OrderBy(x => x.Sequence))
+                { <div class="agent-detail"><div class="detail-row"><strong>@agent.Sequence. @agent.AgentName</strong><span>@agent.DurationMilliseconds ms</span><span>@agent.StartedAt.ToLocalTime().ToString("HH:mm:ss.fff") → @agent.CompletedAt.ToLocalTime().ToString("HH:mm:ss.fff")</span></div><p>@agent.Finding</p></div> }
+            </section>
+        }
+    }
+</main>
+
+@code {
+    private IReadOnlyList<ReviewRun>? runs;
+    private ReviewRun? selected;
+    protected override async Task OnInitializedAsync() => runs = await Http.GetFromJsonAsync<ReviewRun[]>("api/reviews/runs") ?? [];
+}

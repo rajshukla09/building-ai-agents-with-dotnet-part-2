@@ -1,0 +1,389 @@
+@page "/"
+@implements IAsyncDisposable
+@inject HttpClient Http
+
+<PageTitle>Chapter 9 Context Engineering</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-6">
+    <MudText Typo="Typo.overline" Color="Color.Primary">Chapter 9</MudText>
+    <MudText Typo="Typo.h3">Production-Ready Context Engineering</MudText>
+    <MudText Typo="Typo.subtitle1" Class="mb-5">
+        Large Evidence Store → Focused Retrieval → Small Context Bundle → Specialist Agent
+    </MudText>
+
+    <MudPaper Class="incident-hero pa-5 mb-5" Elevation="1">
+        <MudText Typo="Typo.h5">Checkout latency increased after a production deployment</MudText>
+        <MudText Class="mb-3">
+            Run the deterministic investigation and inspect the backend facts supplied to each Agent.
+        </MudText>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="@_isStarting"
+                   OnClick="StartAsync">
+            @(_isStarting ? "Starting…" : "Run sample investigation")
+        </MudButton>
+    </MudPaper>
+
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">
+            @_errorMessage
+        </MudAlert>
+    }
+
+    @if (_investigation?.Status == "Failed")
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">
+            @(_investigation.FailureMessage ?? "The investigation failed. Review the API logs for details.")
+        </MudAlert>
+    }
+
+    @if (_investigation is not null)
+    {
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="4">
+                <MudPaper Class="metric-card stored pa-4" Elevation="0">
+                    <MudText Typo="Typo.overline">Stored evidence</MudText>
+                    <MudText Typo="Typo.h4">@_investigation.Metrics.StoredEvidenceRecords records</MudText>
+                    <MudText>~@FormatSize(_investigation.Metrics.ApproximateStoredCharacters)</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudPaper Class="metric-card state pa-4" Elevation="0">
+                    <MudText Typo="Typo.overline">Compact Supervisor state</MudText>
+                    <MudText Typo="Typo.h4">~@FormatSize(_investigation.Metrics.ApproximateSupervisorStateCharacters)</MudText>
+                    <MudText>@(_investigation.SupervisorState?.EvidenceReferences.Count ?? 0) evidence references</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudPaper Class="metric-card context pa-4" Elevation="0">
+                    <MudText Typo="Typo.overline">Current Agent context</MudText>
+                    <MudText Typo="Typo.h4">@_investigation.Metrics.CurrentContextRecords records</MudText>
+                    <MudText>~@FormatSize(_investigation.Metrics.ApproximateCurrentContextCharacters)</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid>
+            <MudItem xs="12" lg="4">
+                <MudPaper Class="pa-4 mb-4" Elevation="1">
+                    <MudText Typo="Typo.h5" Class="mb-3">Supervisor state</MudText>
+                    <MudText><b>Status:</b> @_investigation.Status</MudText>
+                    <MudText><b>Incident:</b> @_investigation.IncidentId</MudText>
+                    <MudText><b>Goal:</b> @_investigation.SupervisorState?.CurrentGoal</MudText>
+                    <MudText><b>Confidence/status score:</b> @_investigation.SupervisorState?.Confidence.ToString("0.00")</MudText>
+                    <MudDivider Class="my-3" />
+                    <MudText Typo="Typo.subtitle2">Completed investigations</MudText>
+                    <MudText Typo="Typo.body2">@Join(_investigation.SupervisorState?.CompletedInvestigations)</MudText>
+                    <MudText Typo="Typo.subtitle2" Class="mt-2">Pending investigations</MudText>
+                    <MudText Typo="Typo.body2">@Join(_investigation.SupervisorState?.PendingInvestigations)</MudText>
+                </MudPaper>
+
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.h5" Class="mb-3">Actual timeline</MudText>
+                    @foreach (var item in _investigation.Timeline.OrderBy(item => item.Sequence))
+                    {
+                        <div class="timeline-item">
+                            <MudText Typo="Typo.caption">@item.Timestamp.ToLocalTime().ToString("T") · @item.EventType</MudText>
+                            <MudText Typo="Typo.body2">@item.Message</MudText>
+                        </div>
+                    }
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" lg="8">
+                <MudText Typo="Typo.h5" Class="mb-3">Agent executions</MudText>
+                <MudExpansionPanels MultiExpansion="true" Class="mb-4">
+                    @foreach (var execution in _investigation.AgentExecutions)
+                    {
+                        <MudExpansionPanel Text="@ExecutionTitle(execution)">
+                            @if (execution.ContextBundle?.Diagnostics is not null)
+                            {
+                                var diagnostics = execution.ContextBundle.Diagnostics;
+                                <MudText Typo="Typo.subtitle2">Retrieval funnel</MudText>
+                                <div class="retrieval-funnel">
+                                    <span>@diagnostics.TotalIncidentEvidence stored</span>
+                                    <b>→</b>
+                                    <span>@diagnostics.DeterministicCandidates filtered</span>
+                                    <b>→</b>
+                                    <span>@diagnostics.RankedCandidates ranked</span>
+                                    <b>→</b>
+                                    <span>@(diagnostics.RankedCandidates - diagnostics.DuplicatesRemoved) deduplicated</span>
+                                    <b>→</b>
+                                    <span>@diagnostics.SelectedEvidenceCount selected</span>
+                                    <b>→</b>
+                                    <span>~@FormatSize(diagnostics.ApproximateSelectedCharacters) context</span>
+                                </div>
+                            }
+
+                            <MudGrid Class="mt-3">
+                                <MudItem xs="6" md="3">
+                                    <MudText Typo="Typo.caption">Status</MudText>
+                                    <MudText>@execution.Status</MudText>
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudText Typo="Typo.caption">Retrieval profile</MudText>
+                                    <MudText>@execution.ContextBundle?.RetrievalSpecification?.TargetAgent</MudText>
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudText Typo="Typo.caption">Finding evidence</MudText>
+                                    <MudText>@ShortId(execution.NewEvidenceId)</MudText>
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudText Typo="Typo.caption">Duration</MudText>
+                                    <MudText>@Duration(execution)</MudText>
+                                </MudItem>
+                            </MudGrid>
+
+                            @if (execution.AdditionalContextRequired is not null)
+                            {
+                                <MudAlert Severity="Severity.Info" Class="my-3">
+                                    <b>Additional context required:</b>
+                                    @execution.AdditionalContextRequired.MissingInformation —
+                                    @execution.AdditionalContextRequired.Reason
+                                </MudAlert>
+                            }
+
+                            <MudText Class="my-3"><b>Finding:</b> @execution.FindingSummary</MudText>
+                            <MudExpansionPanels>
+                                <MudExpansionPanel Text="View exact safe Context Bundle">
+                                    <ContextBundleInspector Bundle="@execution.ContextBundle" />
+                                </MudExpansionPanel>
+                            </MudExpansionPanels>
+                        </MudExpansionPanel>
+                    }
+                </MudExpansionPanels>
+
+                <MudPaper Class="pa-4 mb-4" Elevation="1">
+                    <MudText Typo="Typo.h5">Evidence Store</MudText>
+                    <MudGrid Class="my-2">
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudTextField @bind-Value="_sourceFilter"
+                                          Label="Source Agent"
+                                          Variant="Variant.Outlined"
+                                          Immediate="true" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudTextField @bind-Value="_typeFilter"
+                                          Label="Evidence type"
+                                          Variant="Variant.Outlined"
+                                          Immediate="true" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudTextField @bind-Value="_componentFilter"
+                                          Label="Component"
+                                          Variant="Variant.Outlined"
+                                          Immediate="true" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudDatePicker @bind-Date="_minimumEvidenceDate"
+                                           Label="Observed on/after"
+                                           Variant="Variant.Outlined"
+                                           Clearable="true" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudNumericField T="int?"
+                                             @bind-Value="_roundFilter"
+                                             Label="Investigation round"
+                                             Variant="Variant.Outlined"
+                                             Min="0" />
+                        </MudItem>
+                    </MudGrid>
+                    <MudTable Items="@FilteredEvidence.Take(25)"
+                              Dense="true"
+                              Hover="true"
+                              Breakpoint="Breakpoint.Sm">
+                        <HeaderContent>
+                            <MudTh>Evidence</MudTh>
+                            <MudTh>Source</MudTh>
+                            <MudTh>Type</MudTh>
+                            <MudTh>Component</MudTh>
+                            <MudTh>Observed</MudTh>
+                            <MudTh>Round</MudTh>
+                            <MudTh>Summary</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Evidence">@context.EvidenceId.ToString("N")[..8]</MudTd>
+                            <MudTd DataLabel="Source">@context.SourceAgent</MudTd>
+                            <MudTd DataLabel="Type">@context.EvidenceType</MudTd>
+                            <MudTd DataLabel="Component">@context.Component</MudTd>
+                            <MudTd DataLabel="Observed">@context.ObservedFrom?.ToLocalTime().ToString("g")</MudTd>
+                            <MudTd DataLabel="Round">@(context.InvestigationRound == 0 ? "Seed" : context.InvestigationRound.ToString())</MudTd>
+                            <MudTd DataLabel="Summary">@context.Summary</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                    <MudText Typo="Typo.caption" Class="mt-2">
+                        Showing at most 25 compact rows; detailed content is loaded only in selected Context Bundles.
+                    </MudText>
+                </MudPaper>
+
+                @if (_investigation.FinalRecommendation is not null)
+                {
+                    <MudPaper Class="root-cause pa-5" Elevation="3">
+                        <MudText Typo="Typo.overline">Final recommendation</MudText>
+                        <MudText Typo="Typo.h4">Likely Root Cause</MudText>
+                        <MudText Class="my-3">@_investigation.FinalRecommendation.LikelyRootCause</MudText>
+                        <MudText><b>Action:</b> @_investigation.FinalRecommendation.Recommendation</MudText>
+                        <MudText><b>Status score:</b> @_investigation.FinalRecommendation.Confidence.ToString("0.00")</MudText>
+                        <MudText Typo="Typo.caption">
+                            Supporting evidence: @string.Join(", ", _investigation.FinalRecommendation.SupportingEvidenceIds.Select(id => ShortId(id)))
+                        </MudText>
+                    </MudPaper>
+                }
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+@code {
+    private InvestigationView? _investigation;
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _pollingCancellation;
+    private bool _isStarting;
+    private string? _errorMessage;
+    private string _sourceFilter = string.Empty;
+    private string _typeFilter = string.Empty;
+    private string _componentFilter = string.Empty;
+    private DateTime? _minimumEvidenceDate;
+    private int? _roundFilter;
+
+    private IEnumerable<EvidenceSummaryView> FilteredEvidence =>
+        (_investigation?.Evidence ?? [])
+            .Where(item => Matches(item.SourceAgent, _sourceFilter))
+            .Where(item => Matches(item.EvidenceType.ToString(), _typeFilter))
+            .Where(item => Matches(item.Component, _componentFilter))
+            .Where(item => _minimumEvidenceDate is null ||
+                (item.ObservedFrom is not null &&
+                    item.ObservedFrom.Value.LocalDateTime.Date >= _minimumEvidenceDate.Value.Date))
+            .Where(item => _roundFilter is null ||
+                item.InvestigationRound == _roundFilter.Value);
+
+    private async Task StartAsync()
+    {
+        _isStarting = true;
+        _errorMessage = null;
+
+        try
+        {
+            var response = await Http.PostAsync("api/investigations/demo", null);
+            if (!response.IsSuccessStatusCode)
+            {
+                _errorMessage = await ReadApiErrorAsync(response);
+                return;
+            }
+
+            var started = await response.Content.ReadFromJsonAsync<StartInvestigationResponse>();
+            if (started is null)
+            {
+                _errorMessage = "The API returned an invalid demo-start response.";
+                return;
+            }
+
+            await BeginPollingAsync(started.IncidentId);
+        }
+        catch (HttpRequestException exception)
+        {
+            _errorMessage = $"Could not reach the Chapter 9 API: {exception.Message}";
+        }
+        catch (TaskCanceledException)
+        {
+            _errorMessage = "The Chapter 9 API request was canceled or timed out.";
+        }
+        finally
+        {
+            _isStarting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task BeginPollingAsync(Guid incidentId)
+    {
+        _pollingCancellation?.Cancel();
+        _pollingCancellation = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+        await RefreshAsync(incidentId, _pollingCancellation.Token);
+
+        while (await _timer.WaitForNextTickAsync(_pollingCancellation.Token))
+        {
+            await RefreshAsync(incidentId, _pollingCancellation.Token);
+            await InvokeAsync(StateHasChanged);
+
+            if (_investigation?.Status is "Completed" or "Failed")
+            {
+                break;
+            }
+        }
+    }
+
+    private static async Task<string> ReadApiErrorAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            var problem = await response.Content.ReadFromJsonAsync<ApiProblem>();
+            return problem?.Detail ??
+                $"The API rejected the request with status {(int)response.StatusCode}.";
+        }
+        catch
+        {
+            return $"The API rejected the request with status {(int)response.StatusCode}.";
+        }
+    }
+
+    private async Task RefreshAsync(Guid incidentId, CancellationToken cancellationToken)
+    {
+        _investigation = await Http.GetFromJsonAsync<InvestigationView>(
+            $"api/investigations/{incidentId}",
+            cancellationToken);
+    }
+
+    private static bool Matches(string value, string filter)
+    {
+        return string.IsNullOrWhiteSpace(filter) ||
+            value.Contains(filter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string Join(IReadOnlyList<string>? values)
+    {
+        return values is { Count: > 0 }
+            ? string.Join(", ", values)
+            : "None";
+    }
+
+    private static string ExecutionTitle(AgentExecutionView execution)
+    {
+        return $"{execution.Agent} — retrieval {execution.RetrievalIteration} — {execution.Status}";
+    }
+
+    private static string Duration(AgentExecutionView execution)
+    {
+        return execution.CompletedAt is null
+            ? "Running"
+            : $"{(execution.CompletedAt.Value - execution.StartedAt).TotalMilliseconds:0} ms";
+    }
+
+    private static string ShortId(Guid? id)
+    {
+        return id is null
+            ? "—"
+            : id.Value.ToString("N")[..8];
+    }
+
+    private static string FormatSize(int characters)
+    {
+        return characters >= 1_000
+            ? $"{characters / 1_000d:0.0} KB approximate"
+            : $"{characters} characters";
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _pollingCancellation?.Cancel();
+        _pollingCancellation?.Dispose();
+        _timer?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+
+    private sealed record StartInvestigationResponse(Guid IncidentId);
+
+    private sealed record ApiProblem(string? Title, string? Detail, int? Status);
+}

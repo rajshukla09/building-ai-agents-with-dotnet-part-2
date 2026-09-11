@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "TravelCoordinator.Api": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DestinationExpert__BaseUrl": "http://localhost:60062"
+      },
+      "applicationUrl": "https://localhost:60061;http://localhost:60063"
+    }
+  }
+}

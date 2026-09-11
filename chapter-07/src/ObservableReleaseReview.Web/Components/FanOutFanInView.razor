@@ -1,0 +1,16 @@
+<section class="panel fan" aria-labelledby="fan-heading">
+    <h2 id="fan-heading">Fan-out / fan-in</h2>
+    <div class="fan-grid">
+        <div><span>Fan-Out branches</span><strong>Security · Quality · Architecture</strong></div>
+        <div><span>Overlap</span><strong>Inspect distributed trace</strong></div>
+        <div><span>Fan-In</span><strong>@FanInMessage</strong></div>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required ReleaseReviewResponse Result { get; set; }
+
+    private string FanInMessage => Result.Status == "Completed"
+        ? "ReleaseDecision ran after all required branches completed"
+        : "ReleaseDecision was not reached because a required branch failed";
+}

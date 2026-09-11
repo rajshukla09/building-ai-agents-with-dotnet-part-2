@@ -1,0 +1,6 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Agent-to-Agent (A2A)</title><link rel="stylesheet" href="styles.css"></head>
+<body><main><p class="eyebrow">CHAPTER 18</p><h1>Agent-to-Agent (A2A)</h1><p>Two independently hosted MAF agents, connected by the A2A protocol.</p>
+<section class="boundary"><strong>TravelCoordinator</strong><span>→</span><b>A2A / HTTP</b><span>→</span><strong>DestinationExpert</strong></section>
+<section class="card"><label for="message">Travel request</label><textarea id="message">I am planning a three-day trip to Jaipur. Ask the destination expert what I should prioritize and use its advice to give me a final recommendation.</textarea><button id="send">Send through A2A</button><span id="status">Ready</span></section>
+<section class="grid"><article><h2>Discovered Agent Card</h2><pre id="agentCard">Not discovered yet.</pre></article><article><h2>Network exchange</h2><h3>Remote request</h3><pre id="remoteRequest">—</pre><h3>Remote response</h3><pre id="remoteResponse">—</pre></article></section>
+<section class="card"><h2>Final coordinator response</h2><div id="final">—</div></section><section class="card"><h2>Event timeline</h2><ol id="timeline"></ol></section></main><script src="app.js"></script></body></html>

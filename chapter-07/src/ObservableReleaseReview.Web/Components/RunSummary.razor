@@ -1,0 +1,17 @@
+@if (Result is not null)
+{
+    <section class="panel summary" aria-labelledby="summary-heading">
+        <h2 id="summary-heading">Run summary</h2>
+        <dl>
+            <div><dt>Run</dt><dd class="mono">@Result.RunId</dd></div>
+            <div><dt>Status</dt><dd><span class="badge @Result.Status.ToLowerInvariant()">@Result.Status</span></dd></div>
+            <div><dt>Duration</dt><dd>@Result.DurationMs ms</dd></div>
+            <div><dt>Decision</dt><dd>@(Result.FinalDecision ?? "Not produced")</dd></div>
+        </dl>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public ReleaseReviewResponse? Result { get; set; }
+}

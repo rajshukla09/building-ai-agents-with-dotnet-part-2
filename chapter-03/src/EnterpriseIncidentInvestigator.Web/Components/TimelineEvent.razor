@@ -1,0 +1,13 @@
+<MudPaper Outlined="true" Class="pa-4 mb-3 timeline-event">
+    <div class="d-flex justify-space-between"><MudText Typo="Typo.subtitle1"><b>@Event.Sequence. @Title</b></MudText><MudChip T="string" Size="Size.Small" Color="@ColorFor(Event.Status)">@Event.Status</MudChip></div>
+    <MudText Typo="Typo.caption">@Event.Timestamp.ToLocalTime().ToString("T") @(Event.DurationMilliseconds is null ? "" : Event.DurationMilliseconds == 0 ? "· <1 ms" : $"· {Event.DurationMilliseconds} ms")</MudText>
+    @if (Event.EventType == "SupervisorDecision") { <MudText Class="mt-2"><b>Selected:</b> @Event.Agent</MudText><MudText><b>Reason:</b> @Event.Reason</MudText> }
+    @if (Event.EventType != "SupervisorDecision" && !string.IsNullOrWhiteSpace(Event.Reason)) { <MudText Class="mt-2">@Event.Reason</MudText> }
+    @if (!string.IsNullOrWhiteSpace(Event.InputContextSummary)) { <MudText Class="mt-2"><b>Input context summary:</b> @Event.InputContextSummary</MudText> }
+    @if (Event.EventType == "McpToolCompleted") { <MudText Class="mt-2"><b>MCP:</b> @Event.ToolServer / @Event.Tool (#@Event.ToolSequence)</MudText><MudText Typo="Typo.caption">Tool calls for this agent are limited to @MaxTools.</MudText> }
+    @if (Event.EventType == "McpCapabilitiesDiscovered") { <MudText Class="mt-2"><b>MCP Client discovered from @Event.ToolServer MCP Server:</b> @Event.Reason</MudText> }
+    @if (!string.IsNullOrWhiteSpace(Event.FindingSummary)) { <MudText Class="mt-2"><b>Finding produced:</b> @Event.FindingSummary</MudText> }
+    @if (Event.Confidence is not null) { <MudText><b>Confidence:</b> @Event.Confidence.Value.ToString("P0")</MudText> }
+    @if (!string.IsNullOrWhiteSpace(Event.ErrorSummary)) { <MudAlert Severity="Severity.Error" Class="mt-2">@Event.ErrorSummary</MudAlert> }
+</MudPaper>
+@code { [Parameter, EditorRequired] public InvestigationEventView Event { get; set; } = null!; [Parameter] public int MaxTools { get; set; } private string Title => Event.EventType switch { "SupervisorDecision" => "Supervisor decision", "McpCapabilitiesDiscovered" => $"{Event.Agent} · MCP discovery", "McpToolCompleted" => $"{Event.Agent} · MCP tool", _ => Event.Agent is null ? Event.EventType : $"{Event.Agent} · {Event.EventType}" }; private static Color ColorFor(string s) => s switch { "Completed" => Color.Success, "Failed" => Color.Error, "LimitReached" => Color.Warning, "Selected" => Color.Secondary, _ => Color.Info }; }
