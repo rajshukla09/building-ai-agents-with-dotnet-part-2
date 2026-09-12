@@ -108,7 +108,8 @@ This repository accompanies:
 
 **Building AI Agents with .NET — Part 2: Advanced Agentic Architecture and Production Workflows**
 
-The Amazon link for Part 2 will be added here after publication.
+**Amazon:**  
+https://www.amazon.com/dp/B0HJHDMCZB
 
 ---
 
